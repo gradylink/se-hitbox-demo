@@ -105,7 +105,7 @@ const SDL_DialogFileFilter filters[] = {{"PNG images", "png"},
 int main() {
   // TODO: error handling
   SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS);
-  SDL_CreateWindowAndRenderer("Scratch Everywhere! Collision Test", windowWidth,
+  SDL_CreateWindowAndRenderer("Scratch Everywhere! Collision Demo", windowWidth,
                               windowHeight, SDL_WINDOW_RESIZABLE, &window,
                               &renderer);
 
