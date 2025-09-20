@@ -85,12 +85,24 @@ std::vector<SDL_Rect> generateCollisionRects(SDL_Surface *surface) {
   return collisionRects;
 }
 
-// TODO: Add ability to load custom file.
+SDL_Window *window;
+SDL_Renderer *renderer;
+
+bool loaded = false;
+
+SDL_Surface *sourceSurface;
+SDL_Surface *scaledSurface;
+SDL_Texture *sourceImage;
+SDL_FRect sourceDest;
+std::vector<SDL_Rect> collisionRects;
+float width, height;
+
+const SDL_DialogFileFilter filters[] = {{"PNG images", "png"},
+                                        {"JPEG images", "jpg;jpeg"},
+                                        {"All images", "png;jpg;jpeg"},
+                                        {"All files", "*"}};
 
 int main() {
-  SDL_Window *window;
-  SDL_Renderer *renderer;
-
   // TODO: error handling
   SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS);
   SDL_CreateWindowAndRenderer("Scratch Everywhere! Collision Test", windowWidth,
@@ -98,25 +110,6 @@ int main() {
                               &renderer);
 
   SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
-
-  SDL_Texture *sourceImage = IMG_LoadTexture(renderer, "source.png");
-  float width, height;
-  SDL_GetTextureSize(sourceImage, &width, &height);
-
-  SDL_FRect sourceDest = {padding, padding,
-                          (windowHeight - padding * 2) * (width / height),
-                          ((float)windowHeight - padding * 2)};
-
-  SDL_Surface *sourceSurface = IMG_Load("source.png");
-
-  SDL_Surface *scaledSurface = SDL_CreateSurface(
-      (width > height) ? resolution : resolution * ((double)width / height),
-      (height > width) ? resolution : resolution * ((double)height / width),
-      SDL_PIXELFORMAT_RGBA8888);
-
-  SDL_BlitSurfaceScaled(sourceSurface, NULL, scaledSurface, NULL,
-                        SDL_SCALEMODE_NEAREST);
-  std::vector<SDL_Rect> collisionRects = generateCollisionRects(scaledSurface);
 
   auto onResolutionChange = [&]() {
     SDL_DestroySurface(scaledSurface);
@@ -129,6 +122,42 @@ int main() {
                           SDL_SCALEMODE_NEAREST);
     collisionRects = generateCollisionRects(scaledSurface);
   };
+
+  SDL_ShowOpenFileDialog(
+      [](void *userdata, const char *const *filelist, int filter) {
+        if (!filelist) {
+          SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "An error occured: %s",
+                       SDL_GetError());
+          return;
+        }
+        if (!*filelist) {
+          SDL_Log("The user did not select any file.");
+          return;
+        }
+
+        sourceImage = IMG_LoadTexture(renderer, *filelist);
+        SDL_GetTextureSize(sourceImage, &width, &height);
+
+        sourceDest = {padding, padding,
+                      (windowHeight - padding * 2) * (width / height),
+                      ((float)windowHeight - padding * 2)};
+
+        sourceSurface = IMG_Load(*filelist);
+
+        scaledSurface = SDL_CreateSurface(
+            (width > height) ? resolution
+                             : resolution * ((double)width / height),
+            (height > width) ? resolution
+                             : resolution * ((double)height / width),
+            SDL_PIXELFORMAT_RGBA8888);
+
+        SDL_BlitSurfaceScaled(sourceSurface, NULL, scaledSurface, NULL,
+                              SDL_SCALEMODE_NEAREST);
+        collisionRects = generateCollisionRects(scaledSurface);
+
+        loaded = true;
+      },
+      NULL, window, filters, 4, NULL, false);
 
   unsigned char white =
       SDL_GetSystemTheme() == SDL_SYSTEM_THEME_DARK ? 0x00 : 0xff;
@@ -146,16 +175,18 @@ int main() {
         white = white == 0x00 ? 0xff : 0x00;
         break;
       case SDL_SCANCODE_O:
+        if (!loaded)
+          break;
         overlap = !overlap;
         break;
       case SDL_SCANCODE_UP:
-        if (resolution == maxResolution)
+        if (resolution == maxResolution || !loaded)
           break;
         resolution++;
         onResolutionChange();
         break;
       case SDL_SCANCODE_DOWN:
-        if (resolution == minResolution)
+        if (resolution == minResolution || !loaded)
           break;
         resolution--;
         onResolutionChange();
@@ -174,31 +205,40 @@ int main() {
 
     SDL_SetRenderDrawColor(renderer, white, white, white, 0xff);
     SDL_RenderClear(renderer);
-    SDL_RenderTexture(renderer, sourceImage, nullptr, &sourceDest);
 
-    SDL_FRect collisionDest = sourceDest;
-    if (!overlap)
-      collisionDest.x = windowWidth - collisionDest.w - padding;
+    if (loaded) {
+      SDL_RenderTexture(renderer, sourceImage, nullptr, &sourceDest);
 
-    for (const auto &rect : collisionRects) {
-      SDL_FRect drawRect = {
-          collisionDest.x + rect.x * (collisionDest.w / scaledSurface->w),
-          collisionDest.y + rect.y * (collisionDest.h / scaledSurface->h),
-          rect.w * (collisionDest.w / scaledSurface->w),
-          rect.h * (collisionDest.h / scaledSurface->h)};
-      SDL_SetRenderDrawColor(renderer, 255, 0, 0, overlap ? 128 : 64);
-      SDL_RenderFillRect(renderer, &drawRect);
-      SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
-      SDL_RenderRect(renderer, &drawRect);
+      SDL_FRect collisionDest = sourceDest;
+      if (!overlap)
+        collisionDest.x = windowWidth - collisionDest.w - padding;
+
+      for (const auto &rect : collisionRects) {
+        SDL_FRect drawRect = {
+            collisionDest.x + rect.x * (collisionDest.w / scaledSurface->w),
+            collisionDest.y + rect.y * (collisionDest.h / scaledSurface->h),
+            rect.w * (collisionDest.w / scaledSurface->w),
+            rect.h * (collisionDest.h / scaledSurface->h)};
+        SDL_SetRenderDrawColor(renderer, 255, 0, 0, overlap ? 128 : 64);
+        SDL_RenderFillRect(renderer, &drawRect);
+        SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
+        SDL_RenderRect(renderer, &drawRect);
+      }
+
+      SDL_SetRenderDrawColor(renderer, white == 0x00 ? 0xff : 0x00,
+                             white == 0x00 ? 0xff : 0x00,
+                             white == 0x00 ? 0xff : 0x00, 255);
+      SDL_RenderDebugText(
+          renderer,
+          windowWidth / 2.0f - 48 - std::to_string(resolution).length() * 4,
+          padding, ("Resolution: " + std::to_string(resolution)).c_str());
+    } else {
+      SDL_SetRenderDrawColor(renderer, white == 0x00 ? 0xff : 0x00,
+                             white == 0x00 ? 0xff : 0x00,
+                             white == 0x00 ? 0xff : 0x00, 255);
+      SDL_RenderDebugText(renderer, windowWidth / 2.0f - 80,
+                          windowHeight / 2.0f - 4, "Waiting for image...");
     }
-
-    SDL_SetRenderDrawColor(renderer, white == 0x00 ? 0xff : 0x00,
-                           white == 0x00 ? 0xff : 0x00,
-                           white == 0x00 ? 0xff : 0x00, 255);
-    SDL_RenderDebugText(
-        renderer,
-        windowWidth / 2.0f - 48 - std::to_string(resolution).length() * 4,
-        padding, ("Resolution: " + std::to_string(resolution)).c_str());
 
     SDL_RenderPresent(renderer);
   }
