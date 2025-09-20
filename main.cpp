@@ -1,8 +1,7 @@
 #include <SDL3/SDL.h>
-#include <SDL3/SDL_events.h>
-#include <SDL3/SDL_video.h>
 #include <SDL3_image/SDL_image.h>
 #include <cstdint>
+#include <string>
 #include <vector>
 
 unsigned int windowWidth = 480;
@@ -10,7 +9,10 @@ unsigned int windowHeight = 360;
 const unsigned int padding = 16;
 const uint8_t alphaThreshold = 0;
 
-unsigned int resolution = 16; // TODO: make changable
+const unsigned int minResolution = 6;
+const unsigned int maxResolution = 80;
+
+unsigned int resolution = 16;
 
 std::vector<SDL_Rect> generateCollisionRects(SDL_Surface *surface) {
   std::vector<SDL_Rect> collisionRects;
@@ -116,6 +118,18 @@ int main() {
                         SDL_SCALEMODE_NEAREST);
   std::vector<SDL_Rect> collisionRects = generateCollisionRects(scaledSurface);
 
+  auto onResolutionChange = [&]() {
+    SDL_DestroySurface(scaledSurface);
+    scaledSurface = SDL_CreateSurface(
+        (width > height) ? resolution : resolution * ((double)width / height),
+        (height > width) ? resolution : resolution * ((double)height / width),
+        SDL_PIXELFORMAT_RGBA8888);
+
+    SDL_BlitSurfaceScaled(sourceSurface, NULL, scaledSurface, NULL,
+                          SDL_SCALEMODE_NEAREST);
+    collisionRects = generateCollisionRects(scaledSurface);
+  };
+
   unsigned char white =
       SDL_GetSystemTheme() == SDL_SYSTEM_THEME_DARK ? 0x00 : 0xff;
   bool overlap = false;
@@ -133,6 +147,18 @@ int main() {
         break;
       case SDL_SCANCODE_O:
         overlap = !overlap;
+        break;
+      case SDL_SCANCODE_UP:
+        if (resolution == maxResolution)
+          break;
+        resolution++;
+        onResolutionChange();
+        break;
+      case SDL_SCANCODE_DOWN:
+        if (resolution == minResolution)
+          break;
+        resolution--;
+        onResolutionChange();
         break;
       default:
         break;
@@ -165,6 +191,14 @@ int main() {
       SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
       SDL_RenderRect(renderer, &drawRect);
     }
+
+    SDL_SetRenderDrawColor(renderer, white == 0x00 ? 0xff : 0x00,
+                           white == 0x00 ? 0xff : 0x00,
+                           white == 0x00 ? 0xff : 0x00, 255);
+    SDL_RenderDebugText(
+        renderer,
+        windowWidth / 2.0f - 48 - std::to_string(resolution).length() * 4,
+        padding, ("Resolution: " + std::to_string(resolution)).c_str());
 
     SDL_RenderPresent(renderer);
   }
