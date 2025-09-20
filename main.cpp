@@ -83,6 +83,8 @@ std::vector<SDL_Rect> generateCollisionRects(SDL_Surface *surface) {
   return collisionRects;
 }
 
+// TODO: Add ability to load custom file.
+
 int main() {
   SDL_Window *window;
   SDL_Renderer *renderer;
@@ -92,6 +94,8 @@ int main() {
   SDL_CreateWindowAndRenderer("Scratch Everywhere! Collision Test", windowWidth,
                               windowHeight, SDL_WINDOW_RESIZABLE, &window,
                               &renderer);
+
+  SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
 
   SDL_Texture *sourceImage = IMG_LoadTexture(renderer, "source.png");
   float width, height;
@@ -112,7 +116,10 @@ int main() {
                         SDL_SCALEMODE_NEAREST);
   std::vector<SDL_Rect> collisionRects = generateCollisionRects(scaledSurface);
 
-  unsigned char white = 0x00;
+  unsigned char white =
+      SDL_GetSystemTheme() == SDL_SYSTEM_THEME_DARK ? 0x00 : 0xff;
+  bool overlap = false;
+
   SDL_Event event;
   while (1) {
     SDL_PollEvent(&event);
@@ -123,6 +130,9 @@ int main() {
       switch (event.key.scancode) {
       case SDL_SCANCODE_SPACE:
         white = white == 0x00 ? 0xff : 0x00;
+        break;
+      case SDL_SCANCODE_O:
+        overlap = !overlap;
         break;
       default:
         break;
@@ -141,7 +151,8 @@ int main() {
     SDL_RenderTexture(renderer, sourceImage, nullptr, &sourceDest);
 
     SDL_FRect collisionDest = sourceDest;
-    collisionDest.x = windowWidth - collisionDest.w - padding;
+    if (!overlap)
+      collisionDest.x = windowWidth - collisionDest.w - padding;
 
     for (const auto &rect : collisionRects) {
       SDL_FRect drawRect = {
@@ -149,6 +160,8 @@ int main() {
           collisionDest.y + rect.y * (collisionDest.h / scaledSurface->h),
           rect.w * (collisionDest.w / scaledSurface->w),
           rect.h * (collisionDest.h / scaledSurface->h)};
+      SDL_SetRenderDrawColor(renderer, 255, 0, 0, overlap ? 128 : 64);
+      SDL_RenderFillRect(renderer, &drawRect);
       SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
       SDL_RenderRect(renderer, &drawRect);
     }
